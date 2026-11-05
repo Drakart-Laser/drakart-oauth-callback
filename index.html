@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>OAuth callback</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: grid; place-items: center;
+    background: #141110; color: #e8dfd7;
+    font: 16px/1.55 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 24px;
+  }
+  main { width: 100%; max-width: 680px; }
+  h1 { font-size: 1.35rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  p  { margin: 0 0 14px; color: #b3a79c; }
+  .panel {
+    background: #1d1917; border: 1px solid #2f2823; border-radius: 14px;
+    padding: 20px; margin-top: 18px;
+  }
+  textarea {
+    width: 100%; min-height: 108px; resize: vertical; padding: 12px;
+    background: #141110; color: #d9a06a; border: 1px solid #3a312b;
+    border-radius: 10px; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    word-break: break-all;
+  }
+  button {
+    margin-top: 12px; padding: 10px 18px; border: 0; border-radius: 9px;
+    background: #b77b4c; color: #141110; font: 600 14px/1 inherit; cursor: pointer;
+  }
+  button:active { transform: translateY(1px); }
+  button.secondary { background: #2f2823; color: #e8dfd7; margin-left: 8px; }
+  .ok  { color: #8fbf7f; }
+  .bad { color: #d97b6c; }
+  code { background: #241f1c; padding: 2px 6px; border-radius: 5px; font-size: 0.9em; }
+  .hint { font-size: 13.5px; color: #8e8378; margin-top: 14px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Waiting…</h1>
+  <p id="subtitle">Reading the authorisation response.</p>
+
+  <section class="panel hidden" id="codePanel">
+    <p class="ok" style="margin-bottom:10px"><strong>Authorisation code received.</strong></p>
+    <textarea id="codeBox" readonly spellcheck="false"></textarea>
+    <button id="copyBtn">Copy code</button>
+    <button class="secondary" id="copyUrlBtn">Copy full URL</button>
+    <p class="hint">
+      Single-use and short-lived — usually about five minutes. Paste it into the waiting terminal
+      as <code>"&lt;the code&gt;"</code> in quotes.
+    </p>
+    <p class="hint" id="stateNote"></p>
+  </section>
+
+  <section class="panel hidden" id="errorPanel">
+    <p class="bad" id="errorText"></p>
+  </section>
+
+  <section class="panel hidden" id="idlePanel">
+    <p>
+      This endpoint exists to receive OAuth authorisation codes. Nothing is here to see unless you
+      arrive from an authorisation redirect.
+    </p>
+    <p class="hint" style="margin-bottom:0">
+      It stores nothing, sets no cookies, and renders whatever the provider put in the query string.
+    </p>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code");
+  const state = params.get("state");
+  const error = params.get("error") || params.get("error_description");
+  const failed = params.get("isAuthSuccessful");
+
+  const $ = (id) => document.getElementById(id);
+  const show = (id) => $(id).classList.remove("hidden");
+
+  function copy(text, btn) {
+    const done = () => {
+      const label = btn.textContent;
+      btn.textContent = "Copied";
+      setTimeout(() => { btn.textContent = label; }, 1400);
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } else {
+      fallback();
+    }
+    function fallback() {
+      const box = $("codeBox");
+      box.focus(); box.select();
+      try { document.execCommand("copy"); done(); } catch (_) { /* user can copy by hand */ }
+    }
+  }
+
+  if (failed !== null && String(failed).toLowerCase() === "false" && !code) {
+    $("title").textContent = "Authorisation was not granted";
+    $("subtitle").textContent = "The provider reported the request as unsuccessful.";
+    $("errorText").textContent = error || "No error detail was supplied. Try the authorisation URL again.";
+    show("errorPanel");
+    return;
+  }
+
+  if (error && !code) {
+    $("title").textContent = "Authorisation failed";
+    $("subtitle").textContent = "The provider returned an error instead of a code.";
+    $("errorText").textContent = error;
+    show("errorPanel");
+    return;
+  }
+
+  if (!code) {
+    $("title").textContent = "OAuth callback";
+    $("subtitle").textContent = "Endpoint is live.";
+    show("idlePanel");
+    return;
+  }
+
+  $("title").textContent = "Authorisation code received";
+  $("subtitle").textContent = "Copy it now — it expires in minutes and cannot be reused.";
+  $("codeBox").value = code;
+  $("stateNote").textContent = state
+    ? "State: " + state
+    : "No state parameter was returned. The caller will skip its CSRF check.";
+  show("codePanel");
+
+  $("copyBtn").addEventListener("click", (e) => copy(code, e.currentTarget));
+  $("copyUrlBtn").addEventListener("click", (e) =>
+    copy(window.location.href, e.currentTarget));
+
+  setTimeout(() => { try { $("codeBox").focus(); $("codeBox").select(); } catch (_) {} }, 120);
+})();
+</script>
+</body>
+</html>
